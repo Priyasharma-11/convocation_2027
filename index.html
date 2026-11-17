@@ -256,7 +256,7 @@ form input[type=text]:focus,form select:focus{border-color:var(--oxblood)}
 
 <div class="topbar">
   <span class="t">Save the date: <em>Convocation 2027</em><span class="hide-m">, <span class="js-date">[Day], [DD Month] 2027</span></span></span>
-  <a href="#" class="js-cal" role="button">Add to calendar</a>
+  <a href="#" class="js-cal" target="_blank" rel="noopener">Add to calendar</a>
 </div>
 
 <div class="app">
@@ -383,7 +383,8 @@ form input[type=text]:focus,form select:focus{border-color:var(--oxblood)}
         <p class="note">Gate, parking and seating details will be shared with the formal invitation.</p>
         <div class="links">
           <a href="https://www.google.com/maps/search/?api=1&query=Ajeenkya+DY+Patil+University+Pune" target="_blank" rel="noopener">View map</a>
-          <button type="button" class="js-cal">Add to calendar</button>
+          <a href="#" class="js-cal" target="_blank" rel="noopener">Add to Google Calendar</a>
+          <button type="button" class="js-ics" hidden>Apple / Outlook (.ics)</button>
         </div>
         <div class="calnote" id="calnote"></div>
       </div>
@@ -477,31 +478,35 @@ let downloads = null;
 function calNote(t){ $('#calnote').textContent = t; }
 function pad(n){ return String(n).padStart(2,'0'); }
 function icsStamp(d){ return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+pad(d.getUTCMinutes())+'00Z'; }
-async function addToCal(e){
-  e.preventDefault();
-  if (!EVENT.startISO && !EVENT.dateISO){ calNote('The calendar file goes live once the date is confirmed.'); return; }
+const CAL = (() => {
   const allDay = !EVENT.startISO;
   const start = allDay ? null : new Date(EVENT.startISO + ':00+05:30'), end = allDay ? null : new Date(start.getTime() + EVENT.durationMin*60000);
   const d0 = EVENT.dateISO.replace(/-/g,''), dn = new Date(EVENT.dateISO + 'T00:00:00Z'); dn.setUTCDate(dn.getUTCDate()+1);
   const d1 = dn.toISOString().slice(0,10).replace(/-/g,'');
-  const loc = EVENT.venue + ', Ajeenkya D Y Patil University, Pune';
+  const v = EVENT.venue.replace(/[\[\]]/g,'');
+  const loc = (/^venue$/i.test(v) ? '' : v + ', ') + 'Ajeenkya D Y Patil University, Pune';
+  const dates = allDay ? d0 + '/' + d1 : icsStamp(start) + '/' + icsStamp(end);
+  const google = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('ADYPU Convocation 2027') +
+    '&dates=' + dates + '&details=' + encodeURIComponent('Save the date for ADYPU Convocation 2027, Class of 2027.') + '&location=' + encodeURIComponent(loc);
   const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//ADYPU//Convocation 2027//EN','BEGIN:VEVENT',
-    'UID:convocation-2027@adypu.edu.in','DTSTAMP:'+icsStamp(new Date()),allDay ? 'DTSTART;VALUE=DATE:'+d0 : 'DTSTART:'+icsStamp(start), allDay ? 'DTEND;VALUE=DATE:'+d1 : 'DTEND:'+icsStamp(end),
+    'UID:convocation-2027@adypu.edu.in','DTSTAMP:'+icsStamp(new Date()),
+    allDay ? 'DTSTART;VALUE=DATE:'+d0 : 'DTSTART:'+icsStamp(start), allDay ? 'DTEND;VALUE=DATE:'+d1 : 'DTEND:'+icsStamp(end),
     'SUMMARY:ADYPU Convocation 2027','LOCATION:'+loc.replace(/,/g,'\\,'),
     'DESCRIPTION:Save the date for ADYPU Convocation 2027.','END:VEVENT','END:VCALENDAR'].join('\r\n');
-  if (downloads){
-    try { await downloads.save({ filename: 'ADYPU-Convocation-2027.ics', data: new Blob([ics], {type:'text/calendar'}) }); calNote('Calendar file saved.'); return; }
-    catch(err){ /* fall through */ }
-  }
-  const g = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('ADYPU Convocation 2027') +
-    '&dates=' + (allDay ? d0 + '/' + d1 : icsStamp(start) + '/' + icsStamp(end)) + '&location=' + encodeURIComponent(loc);
-  $('#calnote').innerHTML = '<a href="'+g+'" target="_blank" rel="noopener" style="color:inherit">Open in Google Calendar ↗</a>';
-}
-$$('.js-cal').forEach(b => b.addEventListener('click', addToCal));
+  return { google, ics };
+})();
+/* every "Add to calendar" is a real link to Google Calendar, so it works anywhere */
+$$('.js-cal').forEach(a => a.href = CAL.google);
+$$('.js-ics').forEach(b => b.addEventListener('click', async () => {
+  if (!downloads) return;
+  try { await downloads.save({ filename: 'ADYPU-Convocation-2027.ics', data: new Blob([CAL.ics], {type:'text/calendar'}) }); calNote('Calendar file saved.'); }
+  catch(err){ calNote('The file wasn’t saved. Use Add to Google Calendar instead.'); }
+}));
 
 /* ---- calendar file support ---- */
 (async () => {
   try { if (window.claude && claude.use) downloads = await claude.use('downloads'); } catch(e){}
+  if (downloads) $$('.js-ics').forEach(b => b.hidden = false);
 })();
 
 /* ---- phone: details cue ---- */
